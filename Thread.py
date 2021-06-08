@@ -3,6 +3,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from serial import Serial
 from string import digits
 from random import choice
+from time import sleep
 
 
 class ReceptionData(QThread):
@@ -18,37 +19,50 @@ class ReceptionData(QThread):
         self.name_save_file = self.generate_name_save_file()
         self.is_save_signal = False
         self.size = 1000
-        self.interval = 1
+        self.interval = 4
+        self.size_receive_data = 8
 
         self.timer = QTimer()
         self.timer.setTimerType(0)
-        self.timer.setInterval(self.interval)
+        # self.timer.setInterval(self.interval)
         self.timer.timeout.connect(self.update)
 
-        self.buffer_string = ""
+        self.buffer_string = b""
         self.buffer = []
+
+    def processing_sequence(self, sequence):
+        channels = np.empty(5)
+        channels[0] = (sequence[0] << 2) | (sequence[1] >> 6)
+        channels[1] = ((sequence[1] & 0o77) << 4) | (sequence[2] >> 4)
+        channels[2] = ((sequence[2] & 0o17) << 6) | (sequence[3] >> 2)
+        channels[3] = ((sequence[3] & 0o3) << 8) | (sequence[4])
+        channels[4] = (sequence[5] << 2) | sequence[6]
+        if self.is_save_signal:
+            self.save_file.write(" ".join(map(str, channels)) + "\n")
+        return channels
 
     def update(self):
         if self.is_port:
-            try:
-                self.buffer_string = self.buffer_string + self.stream.read(self.stream.inWaiting()).decode()
-                # print("%(buffer_string)r" % {"buffer_string": self.buffer_string})
-            except UnicodeDecodeError as error:
-                print(error)
-            else:
-                if '\n' in self.buffer_string:
-                    if self.is_save_signal:
-                        self.save_file.writelines(self.buffer_string.rsplit("\n", 1)[0] + "\n")
-                    lines = self.buffer_string.lstrip().split("\n")
-                    last_received = lines[:-1]
-                    self.buffer_string = lines[-1]
-                    values = [np.array(el.split(" "), dtype=np.int32) for el in last_received]
-                    length_values = len(values)
-                    length = len(self.buffer)
-                    if length + length_values >= self.size:
-                        self.buffer = self.buffer[length + length_values - self.size + 1:]
-                    self.buffer += values
-                    self.transfer_data.emit(self.buffer)
+            # print(self.stream.inWaiting())
+            # data = self.stream.read(self.size_receive_data * 7)
+            # new_data = [self.decode_sequence(data[i: i + 7]) for i in range(0, self.size_receive_data * 7, 7)]
+            # print(new_data)
+            # length = len(self.buffer)
+            # if length + self.size_receive_data >= self.size:
+            #     self.buffer = self.buffer[length + self.size_receive_data - self.size + 1:]
+            # self.buffer += new_data
+            # self.transfer_data.emit(self.buffer)
+
+            amount_bytes = self.stream.inWaiting()
+            if amount_bytes >= 7:
+                amount_pack = amount_bytes // 7
+                data = self.stream.read(amount_pack * 7)
+                new_data = [self.processing_sequence(data[i: i + 7]) for i in range(0, amount_pack * 7, 7)]
+                length = len(self.buffer)
+                if length + self.size_receive_data >= self.size:
+                    self.buffer = self.buffer[length + self.size_receive_data - self.size + 1:]
+                self.buffer += new_data
+                self.transfer_data.emit(self.buffer)
         else:
             n = 8
             string = ""
@@ -58,7 +72,7 @@ class ReceptionData(QThread):
                     self.connect(self.device, self.is_port)
                     break
                 string += value
-            values = [np.array(el.split(" "), dtype=np.int32) for el in string.strip().split("\n")[:-1]]
+            values = [np.array(el.strip().split(" "), dtype=np.float32) for el in string.strip().split("\n")[:-1]]
             length = len(self.buffer)
             if n + length >= self.size:
                 self.buffer = self.buffer[length - self.size + n + 1:]
@@ -83,7 +97,9 @@ class ReceptionData(QThread):
         self.stream = None
 
     def connect_port(self):
-        self.stream = Serial(self.device, 2000000)
+        self.stream = Serial(self.device, 1000000)
+        self.stream.read_until(bytes([1]))
+        self.stream.read(self.size_receive_data * 7)
 
     def connect_file(self):
         self.stream = open(self.device, "r")
@@ -96,7 +112,7 @@ class ReceptionData(QThread):
     def play(self):
         if self.stream is None and self.is_port:
             self.connect_port()
-        self.timer.start()
+        self.timer.start(self.interval)
 
     def close(self):
         self.quit()

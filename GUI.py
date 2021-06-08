@@ -18,8 +18,9 @@ class App(QMainWindow):
         self.central_widget = InterfaceTab()
         self.menu_bar = self.menuBar()
         self.name_port = None
-        self.height = "184"
-        self.weight = "64"
+        self.age = "17"
+        self.height = "189"
+        self.weight = "75"
         self.initUI()
 
     def initUI(self):
@@ -79,7 +80,7 @@ class App(QMainWindow):
         self.central_widget.set_name_save_file(self.__update_name_file(name))
 
     def __update_name_file(self, name):
-        name = "-".join([datetime.now().strftime("%d.%m.%Y"), self.height, self.weight, name])
+        name = "-".join([datetime.now().strftime("%d.%m.%Y"), self.age, self.height, self.weight, name])
         return name
 
     def openFile(self):
@@ -97,7 +98,7 @@ class InterfaceTab(QWidget):
         self.file = ''
         self.tab_widget = QTabWidget(self)
         self.layout = QHBoxLayout(self)
-        self.tab_visualization_graphs = VisualizationGraphs(amount_channels=4)
+        self.tab_visualization_graphs = VisualizationGraphs(amount_channels=5)
         self.initUI()
 
     def initUI(self):
